@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+*.env
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Output / Input artifacts
+/output/*
+!/output/.gitkeep
+/input/*
+!/input/.gitkeep
+
+# Models
+models/
+
+# Jupyter / IDE
+.ipynb_checkpoints/
+*.vscode/
