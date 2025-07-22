@@ -1,50 +1,52 @@
-import os
+# main.py
+
 import json
-import argparse
-from src.pdf_parser import extract_chunks_from_pdf
-from src.embedder import Embedder
-from src.ranker import rank_chunks
-from src.output_generator import build_output
+from pathlib import Path
+from engine import HeliosEngine
+import logging
+
+COLLECTIONS_ROOT = Path("collections")
+OUTPUT_ROOT = Path("outputs") # Store outputs in a separate root
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--collection", required=True, help="Name of collection folder (e.g. Collection1)")
-    args = parser.parse_args()
+    logging.info("Starting Adobe Hackathon Round 1B Submission - Helios Engine")
+    OUTPUT_ROOT.mkdir(exist_ok=True)
+    
+    engine = HeliosEngine()
 
-    collection_dir = os.path.join("input", args.collection)
-    pdf_dir = os.path.join(collection_dir, "pdfs")
+    collection_dirs = [d for d in COLLECTIONS_ROOT.iterdir() if d.is_dir()]
+    if not collection_dirs:
+        logging.warning(f"No collection directories found in '{COLLECTIONS_ROOT}'.")
+        return
 
-    # 🔍 Try both input file names
-    input_json = os.path.join(collection_dir, "challenge1b_input.json")
-    if not os.path.exists(input_json):
-        input_json = os.path.join(collection_dir, "input.json")
+    for collection_path in collection_dirs:
+        logging.info(f"--- Processing Collection: {collection_path.name} ---")
+        input_file = collection_path / "input.json"
+        pdf_dir = collection_path / "PDFs"
+        
+        # Create a matching output directory
+        output_dir = OUTPUT_ROOT / collection_path.name
+        output_dir.mkdir(exist_ok=True)
+        output_file = output_dir / "output.json"
 
-    if not os.path.exists(input_json):
-        raise FileNotFoundError(f"❌ Neither 'challenge1b_input.json' nor 'input.json' found in {collection_dir}")
+        if not input_file.exists() or not pdf_dir.exists():
+            logging.error(f"Skipping: Missing input.json or PDFs directory in {collection_path.name}.")
+            continue
+            
+        try:
+            with open(input_file, 'r', encoding='utf-8') as f: input_data = json.load(f)
+            doc_paths = list(pdf_dir.glob("*.pdf"))
+            persona = input_data.get("persona", {}).get("role", "User")
+            job_to_be_done = input_data.get("job_to_be_done", {}).get("task", "Analyze.")
 
-    output_path = os.path.join("output", f"{args.collection}_output.json")
+            analysis_result = engine.run_analysis(doc_paths, persona, job_to_be_done)
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(analysis_result, f, ensure_ascii=False, indent=2)
+            logging.info(f"Successfully wrote analysis to {output_file}")
 
-    with open(input_json, "r", encoding="utf-8") as f:
-        input_meta = json.load(f)
-
-    all_chunks = []
-    for doc in input_meta["documents"]:
-        file_path = os.path.join(pdf_dir, doc["filename"])
-        chunks = extract_chunks_from_pdf(file_path)
-        for chunk in chunks:
-            chunk["document"] = doc["filename"]
-        all_chunks.extend(chunks)
-
-    embedder = Embedder()
-    ranked = rank_chunks(
-        input_meta["persona"]["role"],
-        input_meta["job_to_be_done"]["task"],
-        all_chunks,
-        embedder
-    )
-
-    build_output(input_meta, ranked, output_path)
-    print(f"✅ Output saved to {output_path}")
+        except Exception as e:
+            logging.critical(f"Critical error in {collection_path.name}: {e}", exc_info=True)
 
 if __name__ == "__main__":
     main()
